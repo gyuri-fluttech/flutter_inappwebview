@@ -6,6 +6,8 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -29,6 +31,8 @@ import androidx.webkit.WebResourceRequestCompat;
 import androidx.webkit.WebViewClientCompat;
 import androidx.webkit.WebViewFeature;
 
+import com.pichillilorenzo.flutter_inappwebview.OnFormSubmitted;
+import com.pichillilorenzo.flutter_inappwebview.RequestInterceptorJavaScriptInterface;
 import com.pichillilorenzo.flutter_inappwebview.Util;
 import com.pichillilorenzo.flutter_inappwebview.credential_database.CredentialDatabase;
 import com.pichillilorenzo.flutter_inappwebview.in_app_browser.InAppBrowserDelegate;
@@ -64,10 +68,31 @@ public class InAppWebViewClientCompat extends WebViewClientCompat {
   private static int previousAuthRequestFailureCount = 0;
   private static List<URLCredential> credentialsProposed = null;
 
-  public InAppWebViewClientCompat(InAppBrowserDelegate inAppBrowserDelegate) {
+  public InAppWebViewClientCompat(final InAppWebView webView, InAppBrowserDelegate inAppBrowserDelegate) {
     super();
+
     this.inAppBrowserDelegate = inAppBrowserDelegate;
-  }
+    new RequestInterceptorJavaScriptInterface(webView, new OnFormSubmitted() {
+      @Override
+      public void onSubmitted(@NonNull final String url, @NonNull final String method, @NonNull final String body, @NonNull final Map<String, String> headers, @NonNull String trace, @Nullable String enctype) {
+        if (webView.customSettings.useShouldOverrideUrlLoading) {
+          new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+              onShouldOverrideUrlLoading(
+                      webView,
+                      url,
+                      method,
+                      headers,
+                      body.getBytes(),
+                      false,
+                      false,
+                      false);
+            }
+          });
+        }
+      }
+    });  }
 
   @TargetApi(Build.VERSION_CODES.LOLLIPOP)
   @Override
@@ -85,6 +110,7 @@ public class InAppWebViewClientCompat extends WebViewClientCompat {
               request.getUrl().toString(),
               request.getMethod(),
               request.getRequestHeaders(),
+              new byte[]{},
               request.isForMainFrame(),
               request.hasGesture(),
               isRedirect);
@@ -108,7 +134,8 @@ public class InAppWebViewClientCompat extends WebViewClientCompat {
   public boolean shouldOverrideUrlLoading(WebView webView, String url) {
     InAppWebView inAppWebView = (InAppWebView) webView;
     if (inAppWebView.customSettings.useShouldOverrideUrlLoading) {
-      onShouldOverrideUrlLoading(inAppWebView, url, "GET", null,true, false, false);
+      onShouldOverrideUrlLoading(inAppWebView, url, "GET", null, new byte[]{},
+              true, false, false);
       return true;
     }
     return false;
@@ -129,9 +156,10 @@ public class InAppWebViewClientCompat extends WebViewClientCompat {
   public void onShouldOverrideUrlLoading(final InAppWebView webView, final String url,
                                          final String method,
                                          @Nullable final Map<String, String> headers,
+                                         final byte[] body,
                                          final boolean isForMainFrame, boolean hasGesture,
                                          boolean isRedirect) {
-    URLRequest request = new URLRequest(url, method, null, headers);
+    URLRequest request = new URLRequest(url, method, body, headers);
     NavigationAction navigationAction = new NavigationAction(
             request,
             isForMainFrame,
@@ -164,7 +192,7 @@ public class InAppWebViewClientCompat extends WebViewClientCompat {
         defaultBehaviour(null);
       }
     };
-    
+
     if (webView.channelDelegate != null) {
       webView.channelDelegate.shouldOverrideUrlLoading(navigationAction, callback);
     } else {
@@ -200,6 +228,11 @@ public class InAppWebViewClientCompat extends WebViewClientCompat {
 
   @Override
   public void onPageStarted(WebView view, String url, Bitmap favicon) {
+    RequestInterceptorJavaScriptInterface.Companion.enabledRequestInspection(
+            view,
+            ""
+    );
+
     final InAppWebView webView = (InAppWebView) view;
     webView.isLoading = true;
     webView.disposeWebMessageChannels();
@@ -216,7 +249,7 @@ public class InAppWebViewClientCompat extends WebViewClientCompat {
       webView.channelDelegate.onLoadStart(url);
     }
   }
-  
+
   public void onPageFinished(WebView view, String url) {
     final InAppWebView webView = (InAppWebView) view;
     webView.isLoading = false;
@@ -260,13 +293,13 @@ public class InAppWebViewClientCompat extends WebViewClientCompat {
     if (inAppBrowserDelegate != null) {
       inAppBrowserDelegate.didUpdateVisitedHistory(url);
     }
-    
+
     final InAppWebView webView = (InAppWebView) view;
     if (webView.channelDelegate != null) {
       webView.channelDelegate.onUpdateVisitedHistory(url, isReload);
     }
   }
-  
+
   @RequiresApi(api = Build.VERSION_CODES.M)
   @Override
   public void onReceivedError(@NonNull WebView view,
@@ -442,7 +475,7 @@ public class InAppWebViewClientCompat extends WebViewClientCompat {
         defaultBehaviour(null);
       }
     };
-    
+
     if (webView.channelDelegate != null) {
       webView.channelDelegate.onReceivedHttpAuthRequest(challenge, callback);
     } else {
@@ -501,7 +534,7 @@ public class InAppWebViewClientCompat extends WebViewClientCompat {
         defaultBehaviour(null);
       }
     };
-    
+
     if (webView.channelDelegate != null) {
       webView.channelDelegate.onReceivedServerTrustAuthRequest(challenge, callback);
     } else {
@@ -541,7 +574,7 @@ public class InAppWebViewClientCompat extends WebViewClientCompat {
                 String certificatePath = (String) response.getCertificatePath();
                 String certificatePassword = (String) response.getCertificatePassword();
                 String keyStoreType = (String) response.getKeyStoreType();
-                Util.PrivateKeyAndCertificates privateKeyAndCertificates = 
+                Util.PrivateKeyAndCertificates privateKeyAndCertificates =
                         Util.loadPrivateKeyAndCertificate(webView.plugin, certificatePath, certificatePassword, keyStoreType);
                 if (privateKeyAndCertificates != null) {
                   request.proceed(privateKeyAndCertificates.privateKey, privateKeyAndCertificates.certificates);

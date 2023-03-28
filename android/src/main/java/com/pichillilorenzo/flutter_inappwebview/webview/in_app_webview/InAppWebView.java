@@ -208,7 +208,7 @@ final public class InAppWebView extends InputAwareWebView implements InAppWebVie
     PackageInfo packageInfo = WebViewCompat.getCurrentWebViewPackage(getContext());
     if (packageInfo == null) {
       Log.d(LOG_TAG, "Using InAppWebViewClient implementation");
-      return new InAppWebViewClient(inAppBrowserDelegate);
+      return new InAppWebViewClient(this, inAppBrowserDelegate);
     }
 
     boolean isChromiumWebView = "com.android.webview".equals(packageInfo.packageName) ||
@@ -226,10 +226,10 @@ final public class InAppWebView extends InputAwareWebView implements InAppWebVie
 
     if (isChromiumWebViewBugFixed || !isChromiumWebView) {
       Log.d(LOG_TAG, "Using InAppWebViewClientCompat implementation");
-      return new InAppWebViewClientCompat(inAppBrowserDelegate);
+      return new InAppWebViewClientCompat(this, inAppBrowserDelegate);
     } else {
       Log.d(LOG_TAG, "Using InAppWebViewClient implementation");
-      return new InAppWebViewClient(inAppBrowserDelegate);
+      return new InAppWebViewClient(this, inAppBrowserDelegate);
     }
   }
 

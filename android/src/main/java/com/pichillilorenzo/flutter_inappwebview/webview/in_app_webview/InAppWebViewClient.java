@@ -6,6 +6,8 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -29,6 +31,8 @@ import androidx.annotation.RequiresApi;
 import androidx.webkit.WebResourceRequestCompat;
 import androidx.webkit.WebViewFeature;
 
+import com.pichillilorenzo.flutter_inappwebview.OnFormSubmitted;
+import com.pichillilorenzo.flutter_inappwebview.RequestInterceptorJavaScriptInterface;
 import com.pichillilorenzo.flutter_inappwebview.Util;
 import com.pichillilorenzo.flutter_inappwebview.credential_database.CredentialDatabase;
 import com.pichillilorenzo.flutter_inappwebview.in_app_browser.InAppBrowserDelegate;
@@ -57,6 +61,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 
+import io.flutter.plugin.common.MethodChannel;
+
 public class InAppWebViewClient extends WebViewClient {
 
   protected static final String LOG_TAG = "IAWebViewClient";
@@ -64,10 +70,33 @@ public class InAppWebViewClient extends WebViewClient {
   private static int previousAuthRequestFailureCount = 0;
   private static List<URLCredential> credentialsProposed = null;
 
-  public InAppWebViewClient(InAppBrowserDelegate inAppBrowserDelegate) {
-    super();
-    this.inAppBrowserDelegate = inAppBrowserDelegate;
-  }
+public InAppWebViewClient(final InAppWebView webView,InAppBrowserDelegate inAppBrowserDelegate) {
+        super();
+
+        this.inAppBrowserDelegate = inAppBrowserDelegate;
+        new RequestInterceptorJavaScriptInterface(webView, new OnFormSubmitted() {
+            @Override
+            public void onSubmitted(@NonNull final String url, @NonNull final String method, @NonNull final String body, @NonNull final Map<String, String> headers, @NonNull String trace, @Nullable String enctype) {
+                    if (webView.customSettings.useShouldOverrideUrlLoading) {
+                        new Handler(Looper.getMainLooper()).post(new Runnable() {
+                            @Override
+                            public void run() {
+                                onShouldOverrideUrlLoading(
+                                        webView,
+                                        url,
+                                        method,
+                                        headers,
+                                        body.getBytes(),
+                                        false,
+                                        false,
+                                        false);
+                            }
+                        });
+                    }
+            }
+        });
+    }
+
 
   @TargetApi(Build.VERSION_CODES.LOLLIPOP)
   @Override
@@ -85,6 +114,7 @@ public class InAppWebViewClient extends WebViewClient {
               request.getUrl().toString(),
               request.getMethod(),
               request.getRequestHeaders(),
+              new byte[]{},
               request.isForMainFrame(),
               request.hasGesture(),
               isRedirect);
@@ -108,7 +138,7 @@ public class InAppWebViewClient extends WebViewClient {
   public boolean shouldOverrideUrlLoading(WebView webView, String url) {
     InAppWebView inAppWebView = (InAppWebView) webView;
     if (inAppWebView.customSettings.useShouldOverrideUrlLoading) {
-      onShouldOverrideUrlLoading(inAppWebView, url, "GET", null,true, false, false);
+      onShouldOverrideUrlLoading(inAppWebView, url, "GET", null, new byte[]{}, true, false, false);
       return true;
     }
     return false;
@@ -129,9 +159,10 @@ public class InAppWebViewClient extends WebViewClient {
   public void onShouldOverrideUrlLoading(final InAppWebView webView, final String url,
                                          final String method,
                                          @Nullable final Map<String, String> headers,
+                                         final byte[] body,
                                          final boolean isForMainFrame, boolean hasGesture,
                                          boolean isRedirect) {
-    URLRequest request = new URLRequest(url, method, null, headers);
+    URLRequest request = new URLRequest(url, method, body, headers);
     NavigationAction navigationAction = new NavigationAction(
             request,
             isForMainFrame,
@@ -200,6 +231,11 @@ public class InAppWebViewClient extends WebViewClient {
 
   @Override
   public void onPageStarted(WebView view, String url, Bitmap favicon) {
+  RequestInterceptorJavaScriptInterface.Companion.enabledRequestInspection(
+                view,
+                ""
+        );
+
     final InAppWebView webView = (InAppWebView) view;
     webView.isLoading = true;
     webView.disposeWebMessageChannels();
@@ -270,28 +306,29 @@ public class InAppWebViewClient extends WebViewClient {
   @RequiresApi(api = Build.VERSION_CODES.M)
   @Override
   public void onReceivedError(WebView view, @NonNull WebResourceRequest request, @NonNull WebResourceError error) {
-    final InAppWebView webView = (InAppWebView) view;
+//    final InAppWebView webView = (InAppWebView) view;
 
-    if (request.isForMainFrame()) {
-      if (webView.customSettings.disableDefaultErrorPage) {
-        webView.stopLoading();
-        webView.loadUrl("about:blank");
-      }
-
-      webView.isLoading = false;
-      previousAuthRequestFailureCount = 0;
-      credentialsProposed = null;
-
-      if (inAppBrowserDelegate != null) {
-        inAppBrowserDelegate.didFailNavigation(request.getUrl().toString(), error.getErrorCode(), error.getDescription().toString());
-      }
-    }
-
-    if (webView.channelDelegate != null) {
-      webView.channelDelegate.onReceivedError(
-              WebResourceRequestExt.fromWebResourceRequest(request),
-              WebResourceErrorExt.fromWebResourceError(error));
-    }
+//    if (request.isForMainFrame()) {
+//      if (webView.customSettings.disableDefaultErrorPage) {
+//        webView.stopLoading();
+//        webView.loadUrl("about:blank");
+//      }
+//
+//      webView.isLoading = false;
+//      previousAuthRequestFailureCount = 0;
+//      credentialsProposed = null;
+//
+//      if (inAppBrowserDelegate != null) {
+//        inAppBrowserDelegate.didFailNavigation(request.getUrl().toString(), error.getErrorCode(), error.getDescription().toString());
+//      }
+//    }
+//
+//    if (webView.channelDelegate != null) {
+//      webView.channelDelegate.onReceivedError(
+//              WebResourceRequestExt.fromWebResourceRequest(request),
+//              WebResourceErrorExt.fromWebResourceError(error));
+//    }
+    super.onReceivedError(view, request, error);
   }
 
   @SuppressLint("RestrictedApi")
